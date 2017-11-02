@@ -1,57 +1,30 @@
-const Vision = require('@google-cloud/vision')
-const gcs = require('@google-cloud/storage')
-const request = require('superagent')
+const { filteredEventHandler, storageNewFileEventFilter, visionFetchLabels } = require('./google-cloud')
+const { any } = require('./utils')
+const { notifySlack } = require('./slack')
 
 const secrets = require('../client-secrets.json')
-const vision = new Vision()
 
-function labelMatchCat(label) {
+function isCat(label) {
   return label.description.indexOf('cat') !== -1 && label.score > 0.8
 }
 
-function imageMatchLabels(uri, matcher) {
-  const request = { source: { imageUri: uri }}
-
-  return vision.labelDetection(request)
-    .then(function(results) { return results[0].labelAnnotations })
-    .then(function(labels) { return labels.find(matcher) !== undefined })
-}
-
-function notifySlackAboutCatPicture(file) {
-  return request
-    .post(secrets.slackWebhook)
-    .send({ text: `A cat was posted: gs://${file.bucket}/${file.name}` })
-}
-
-function logSuccess(result) {
-  console.log(`Send to slack finished with status: ${result.status}`)
+function logSuccess() {
+  console.log(`Successfully sent to slack`)
 }
 
 function logError(error) {
-  console.log(`Send to slack failed with error: ${error.message}`)
-}
-
-function notifySlackIfCat(file) {
-  return function(isCat) {
-    return isCat ?
-      notifySlackAboutCatPicture(file).then(logSuccess, logError) :
-      Promise.resolve()
+  if (error) {
+    console.error(`Function failed with: ${error.message}`)
   }
 }
 
-function isNewFile(file) {
-  return file.resourceState === 'exists' && file.metageneration === '1'
-}
-
-exports.catFinder = function(event, callback) {
+exports.catFinder = filteredEventHandler(storageNewFileEventFilter, function(event, callback) {
   const file = event.data
 
-  if (!isNewFile(file)) {
-    callback()
-    return
-  }
-
-  return imageMatchLabels(`gs://${file.bucket}/${file.name}`, labelMatchCat)
-    .then(notifySlackIfCat(file))
+  return visionFetchLabels(`gs://${file.bucket}/${file.name}`)
+    .then(any(isCat))
+    .then(notifySlack(secrets.slackWebhook, `A cat was posted: gs://${file.bucket}/${file.name}`))
+    .then(logSuccess)
+    .catch(logError)
     .then(callback)
-}
+})
