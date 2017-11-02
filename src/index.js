@@ -20,11 +20,11 @@ function logError(error) {
 
 exports.catFinder = filteredEventHandler(storageNewFileEventFilter, function(event, callback) {
   const file = event.data
+  const storageUri = `gs://${file.bucket}/${file.name}`
 
-  return visionFetchLabels(`gs://${file.bucket}/${file.name}`)
+  return visionFetchLabels(storageUri)
     .then(any(isCat))
-    .then(notifySlack(secrets.slackWebhook, `A cat was posted: gs://${file.bucket}/${file.name}`))
-    .then(logSuccess)
-    .catch(logError)
+    .then(notifySlack(secrets.slackWebhook, `A cat was posted: ${storageUri}`))
+    .then(logSuccess, logError)
     .then(callback)
 })
