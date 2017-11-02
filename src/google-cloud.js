@@ -43,7 +43,6 @@ function visionFetchLabels(uri) {
     .then(function(results) { return results[0].labelAnnotations })
 }
 
-
 module.exports = {
   filteredEventHandler,
   storageNewFileEventFilter,
